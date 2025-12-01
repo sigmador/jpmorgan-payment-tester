@@ -221,25 +221,65 @@ app.post('/api/proxy', async (req, res) => {
 if (process.env.NODE_ENV === 'production') {
     const buildPath = path.join(__dirname, 'client/build');
 
+    console.log('Production mode - checking for build directory...');
+    console.log('Build path:', buildPath);
+    console.log('Build exists:', fs.existsSync(buildPath));
+
     // Check if build directory exists
     if (fs.existsSync(buildPath)) {
+        console.log('Serving static files from:', buildPath);
+
+        // Serve static files (CSS, JS, images, etc.)
         app.use(express.static(buildPath));
 
+        // Handle React routing - return index.html for all non-API routes
         app.get('*', (req, res) => {
-            res.sendFile(path.join(buildPath, 'index.html'));
+            // Only serve index.html for non-API routes
+            if (!req.path.startsWith('/api')) {
+                console.log('Serving index.html for:', req.path);
+                res.sendFile(path.join(buildPath, 'index.html'));
+            } else {
+                // This shouldn't happen as API routes are defined above
+                res.status(404).json({ error: 'API route not found' });
+            }
         });
     } else {
+        console.error('Build directory does not exist!');
+        console.error('Expected path:', buildPath);
+
+        // Log directory contents for debugging
+        try {
+            const clientPath = path.join(__dirname, 'client');
+            console.log('Client directory exists:', fs.existsSync(clientPath));
+            if (fs.existsSync(clientPath)) {
+                console.log('Client directory contents:', fs.readdirSync(clientPath));
+            }
+        } catch (err) {
+            console.error('Error reading directories:', err);
+        }
+
         app.get('*', (req, res) => {
             res.status(503).json({
                 error: 'Application not built',
                 message: 'The React application has not been built yet. Run "npm run build:client" first.',
-                buildPath: buildPath
+                buildPath: buildPath,
+                clientExists: fs.existsSync(path.join(__dirname, 'client'))
             });
         });
     }
+} else {
+    // Development mode
+    console.log('Development mode - API only');
+    app.get('*', (req, res) => {
+        res.json({
+            message: 'Development mode - Run client separately with: cd client && npm start',
+            apiEndpoints: ['/api/health', '/api/config', '/api/proxy']
+        });
+    });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Access your app at: http://localhost:${PORT}`);
 });
