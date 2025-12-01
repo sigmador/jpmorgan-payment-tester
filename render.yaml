@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: jpmorgan-payment-tester
+    env: node
+    buildCommand: npm install && npm run install:client && npm run build:client
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: JPMC_CLIENT_ID
+        sync: false
+      - key: JPMC_CLIENT_SECRET
+        sync: false
+      - key: JPMC_API_KEY
+        sync: false
