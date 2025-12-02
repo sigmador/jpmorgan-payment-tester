@@ -57,9 +57,13 @@ function App() {
 
                     // Set headers based on what's available in environment
                     const defaultHeaders = {
-                        'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
                         'Content-Type': 'application/json'
                     };
+
+                    // Only show Authorization if NOT available in environment (via API key or bearer token)
+                    if (!envCredentials.apiKey && !envCredentials.bearerToken) {
+                        defaultHeaders['Authorization'] = 'Bearer YOUR_ACCESS_TOKEN';
+                    }
 
                     // Only show credential fields if NOT available in environment
                     if (!envCredentials.clientId) {
@@ -96,9 +100,13 @@ function App() {
 
         // Set headers based on what's available in environment
         const defaultHeaders = {
-            'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
             'Content-Type': 'application/json'
         };
+
+        // Only show Authorization if NOT available in environment
+        if (!envCredentials.apiKey && !envCredentials.bearerToken) {
+            defaultHeaders['Authorization'] = 'Bearer YOUR_ACCESS_TOKEN';
+        }
 
         // Only show credential fields if NOT available in environment
         if (!envCredentials.clientId) {
@@ -129,6 +137,12 @@ function App() {
         try {
             // Build headers - exclude credentials that come from environment
             const headersToSend = { ...requestData.headers };
+
+            // Remove Authorization if it will be injected by server (via API key or bearer token)
+            if (envCredentials.apiKey || envCredentials.bearerToken) {
+                delete headersToSend['Authorization'];
+                console.log('Authorization will be provided by server environment');
+            }
 
             // Remove credentials that will be injected by server
             if (envCredentials.clientId) {
@@ -387,7 +401,7 @@ function App() {
                                         {activeTab === 'headers' && (
                                             <div>
                                                 {/* Info banner if credentials come from environment */}
-                                                {(envCredentials.clientId || envCredentials.apiKey) && (
+                                                {(envCredentials.clientId || envCredentials.apiKey || envCredentials.bearerToken) && (
                                                     <div style={{
                                                         backgroundColor: '#f0f9ff',
                                                         border: '1px solid #bae6fd',
@@ -399,6 +413,8 @@ function App() {
                                                     }}>
                                                         <strong>ℹ️ Credentials from Environment</strong>
                                                         <div style={{ marginTop: '6px', fontSize: '13px' }}>
+                                                            {(envCredentials.apiKey || envCredentials.bearerToken) && '• Authorization: Using secure Bearer token from server environment'}
+                                                            {(envCredentials.apiKey || envCredentials.bearerToken) && <br />}
                                                             {envCredentials.clientId && '• X-Client-Id: Using secure value from server environment'}
                                                             {envCredentials.clientId && <br />}
                                                             {envCredentials.apiKey && '• X-Api-Key: Using secure value from server environment'}
