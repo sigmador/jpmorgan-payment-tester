@@ -14,6 +14,21 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Load and validate environment variables
+const ENV_CONFIG = {
+    CLIENT_ID: process.env.JPMC_CLIENT_ID,
+    CLIENT_SECRET: process.env.JPMC_CLIENT_SECRET,
+    API_KEY: process.env.JPMC_API_KEY
+};
+
+// Log environment variable status
+console.log('='.repeat(50));
+console.log('Environment Variables Check:');
+console.log(`JPMC_CLIENT_ID: ${ENV_CONFIG.CLIENT_ID ? '✓ Set' : '✗ Not Set'}`);
+console.log(`JPMC_CLIENT_SECRET: ${ENV_CONFIG.CLIENT_SECRET ? '✓ Set' : '✗ Not Set'}`);
+console.log(`JPMC_API_KEY: ${ENV_CONFIG.API_KEY ? '✓ Set' : '✗ Not Set'}`);
+console.log('='.repeat(50));
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -40,6 +55,46 @@ const JPMC_CONFIG = {
 app.get('/api/health', (req, res) => {
     console.log('Health check called');
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Environment variables status (for debugging)
+app.get('/api/env-status', (req, res) => {
+    console.log('Environment status check called');
+    res.json({
+        environment: process.env.NODE_ENV || 'development',
+        port: PORT,
+        credentials: {
+            clientId: ENV_CONFIG.CLIENT_ID ? 'Set (Hidden)' : 'Not Set',
+            clientSecret: ENV_CONFIG.CLIENT_SECRET ? 'Set (Hidden)' : 'Not Set',
+            apiKey: ENV_CONFIG.API_KEY ? 'Set (Hidden)' : 'Not Set'
+        },
+        note: 'If credentials are "Not Set", they must be added in Render environment variables'
+    });
+});
+
+// Debug: List all registered routes
+app.get('/api/routes', (req, res) => {
+    const routes = [];
+    app._router.stack.forEach(middleware => {
+        if (middleware.route) {
+            // Route middleware
+            const methods = Object.keys(middleware.route.methods).map(m => m.toUpperCase()).join(', ');
+            routes.push(`${methods} ${middleware.route.path}`);
+        } else if (middleware.name === 'router') {
+            // Router middleware
+            middleware.handle.stack.forEach(handler => {
+                if (handler.route) {
+                    const methods = Object.keys(handler.route.methods).map(m => m.toUpperCase()).join(', ');
+                    routes.push(`${methods} ${handler.route.path}`);
+                }
+            });
+        }
+    });
+
+    res.json({
+        registeredRoutes: routes,
+        note: 'These are all the routes registered in Express'
+    });
 });
 
 // Get API configuration
@@ -202,27 +257,94 @@ app.post('/api/proxy', async (req, res) => {
         }
 
         console.log('Proxying request:', { method, url });
-        console.log('Request headers:', headers);
-        console.log('Request body:', body);
+        console.log('Client provided headers:', headers);
+
+        // Merge headers: start with defaults, add client headers
+        const mergedHeaders = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            ...headers
+        };
+
+        // Replace placeholder values with actual env vars
+        const PLACEHOLDER_PATTERNS = ['YOUR_', 'your_', 'YOUR-', 'your-'];
+
+        // Check and replace X-Client-Id
+        if (mergedHeaders['X-Client-Id']) {
+            const clientIdValue = mergedHeaders['X-Client-Id'];
+            const isPlaceholder = PLACEHOLDER_PATTERNS.some(pattern => clientIdValue.includes(pattern));
+
+            if (isPlaceholder || !clientIdValue || clientIdValue.trim() === '') {
+                if (ENV_CONFIG.CLIENT_ID) {
+                    console.log('Replacing placeholder X-Client-Id with environment variable');
+                    mergedHeaders['X-Client-Id'] = ENV_CONFIG.CLIENT_ID;
+                } else {
+                    console.warn('X-Client-Id is placeholder but no env var available');
+                }
+            }
+        } else if (ENV_CONFIG.CLIENT_ID) {
+            console.log('Adding X-Client-Id from environment variable');
+            mergedHeaders['X-Client-Id'] = ENV_CONFIG.CLIENT_ID;
+        }
+
+        // Check and replace X-Api-Key
+        if (mergedHeaders['X-Api-Key']) {
+            const apiKeyValue = mergedHeaders['X-Api-Key'];
+            const isPlaceholder = PLACEHOLDER_PATTERNS.some(pattern => apiKeyValue.includes(pattern));
+
+            if (isPlaceholder || !apiKeyValue || apiKeyValue.trim() === '') {
+                if (ENV_CONFIG.API_KEY) {
+                    console.log('Replacing placeholder X-Api-Key with environment variable');
+                    mergedHeaders['X-Api-Key'] = ENV_CONFIG.API_KEY;
+                } else {
+                    console.warn('X-Api-Key is placeholder but no env var available');
+                }
+            }
+        } else if (ENV_CONFIG.API_KEY) {
+            console.log('Adding X-Api-Key from environment variable');
+            mergedHeaders['X-Api-Key'] = ENV_CONFIG.API_KEY;
+        }
+
+        // Check Authorization header for placeholder
+        if (mergedHeaders['Authorization']) {
+            const authValue = mergedHeaders['Authorization'];
+            const isPlaceholder = PLACEHOLDER_PATTERNS.some(pattern => authValue.includes(pattern));
+
+            if (isPlaceholder) {
+                console.warn('⚠️  Authorization header contains placeholder text!');
+                console.warn('   Please update the Authorization header with a real Bearer token');
+                console.warn('   Example: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6...');
+            }
+        }
+
+        // Log what credentials are being used (without exposing values)
+        console.log('Final headers check:');
+        console.log('  Authorization:', mergedHeaders['Authorization'] ?
+            (mergedHeaders['Authorization'].includes('YOUR') ? '⚠️  PLACEHOLDER' : '✓ Present') : '✗ Missing');
+        console.log('  X-Client-Id:', mergedHeaders['X-Client-Id'] ?
+            (mergedHeaders['X-Client-Id'].includes('YOUR') ? '⚠️  PLACEHOLDER' : '✓ Present') : '✗ Missing');
+        console.log('  X-Api-Key:', mergedHeaders['X-Api-Key'] ?
+            (mergedHeaders['X-Api-Key'].includes('YOUR') ? '⚠️  PLACEHOLDER' : '✓ Present') : '✗ Missing');
 
         const config = {
             method,
             url,
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                ...headers
-            },
+            headers: mergedHeaders,
             validateStatus: () => true // Accept any status code
         };
 
         if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
             config.data = body;
+            console.log('Request body:', JSON.stringify(body, null, 2));
         }
 
         console.log('Sending request to:', url);
         const response = await axios(config);
         console.log('Received response:', response.status, response.statusText);
+
+        // Log response preview (first 500 chars)
+        const responsePreview = JSON.stringify(response.data).substring(0, 500);
+        console.log('Response preview:', responsePreview);
 
         res.json({
             status: response.status,
@@ -233,11 +355,20 @@ app.post('/api/proxy', async (req, res) => {
     } catch (error) {
         console.error('=== PROXY ERROR ===');
         console.error('Error:', error.message);
-        console.error('Stack:', error.stack);
+        console.error('Error code:', error.code);
+
+        if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response data:', error.response.data);
+        } else {
+            console.error('No response received');
+            console.error('Stack:', error.stack);
+        }
 
         res.status(500).json({
             error: 'Proxy request failed',
             message: error.message,
+            code: error.code,
             details: error.response?.data || null
         });
     }
@@ -327,8 +458,22 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`Access your app at: http://localhost:${PORT}`);
     console.log('='.repeat(50));
     console.log('Available API endpoints:');
-    console.log('  GET  /api/health');
-    console.log('  GET  /api/config');
-    console.log('  POST /api/proxy');
+    console.log('  GET  /api/health       - Health check');
+    console.log('  GET  /api/env-status   - Check environment variables');
+    console.log('  GET  /api/routes       - List all registered routes');
+    console.log('  GET  /api/config       - Get API configuration');
+    console.log('  POST /api/proxy        - Proxy API requests');
+    console.log('='.repeat(50));
+    console.log('Environment Variable Status:');
+    console.log(`  JPMC_CLIENT_ID: ${ENV_CONFIG.CLIENT_ID ? '✓ Set' : '✗ MISSING'}`);
+    console.log(`  JPMC_API_KEY: ${ENV_CONFIG.API_KEY ? '✓ Set' : '✗ MISSING'}`);
+    if (!ENV_CONFIG.CLIENT_ID || !ENV_CONFIG.API_KEY) {
+        console.log('\n⚠️  WARNING: Missing credentials!');
+        console.log('   Add them in Render Dashboard → Environment tab');
+        console.log('   The proxy will automatically replace placeholder values');
+        console.log('   Visit /api/env-status for details');
+    } else {
+        console.log('\n✓ Credentials loaded! Placeholder values will be auto-replaced.');
+    }
     console.log('='.repeat(50));
 });
