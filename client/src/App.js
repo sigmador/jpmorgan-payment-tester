@@ -9,6 +9,10 @@ function App() {
     const [initialLoading, setInitialLoading] = useState(true);
     const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState('body');
+    const [envCredentials, setEnvCredentials] = useState({
+        clientId: false,
+        apiKey: false
+    });
     const [requestData, setRequestData] = useState({
         url: '',
         headers: {
@@ -28,6 +32,15 @@ function App() {
             setError(null);
 
             try {
+                // First, check what credentials are available on the server
+                try {
+                    const envRes = await axios.get('/api/env-status');
+                    console.log('Environment credentials available:', envRes.data.available);
+                    setEnvCredentials(envRes.data.available);
+                } catch (envError) {
+                    console.warn('Could not fetch environment status:', envError);
+                }
+
                 const res = await axios.get('/api/config');
                 console.log('API config loaded successfully:', res.data);
                 setApis(res.data.apis);
@@ -41,13 +54,25 @@ function App() {
                     setResponse(null);
 
                     const fullUrl = `${firstApi.baseUrl}${firstEndpoint.path}`;
+
+                    // Set headers based on what's available in environment
+                    const defaultHeaders = {
+                        'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
+                        'Content-Type': 'application/json'
+                    };
+
+                    // Only show credential fields if NOT available in environment
+                    if (!envCredentials.clientId) {
+                        defaultHeaders['X-Client-Id'] = 'YOUR_CLIENT_ID';
+                    }
+
+                    if (!envCredentials.apiKey) {
+                        defaultHeaders['X-Api-Key'] = 'YOUR_API_KEY';
+                    }
+
                     setRequestData({
                         url: fullUrl,
-                        headers: {
-                            'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
-                            'Content-Type': 'application/json',
-                            'X-Client-Id': 'YOUR_CLIENT_ID'
-                        },
+                        headers: defaultHeaders,
                         body: firstEndpoint.samplePayload ? JSON.stringify(firstEndpoint.samplePayload, null, 2) : ''
                     });
                 }
@@ -68,13 +93,25 @@ function App() {
         setResponse(null);
 
         const fullUrl = `${api.baseUrl}${endpoint.path}`;
+
+        // Set headers based on what's available in environment
+        const defaultHeaders = {
+            'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
+            'Content-Type': 'application/json'
+        };
+
+        // Only show credential fields if NOT available in environment
+        if (!envCredentials.clientId) {
+            defaultHeaders['X-Client-Id'] = 'YOUR_CLIENT_ID';
+        }
+
+        if (!envCredentials.apiKey) {
+            defaultHeaders['X-Api-Key'] = 'YOUR_API_KEY';
+        }
+
         setRequestData({
             url: fullUrl,
-            headers: {
-                'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
-                'Content-Type': 'application/json',
-                'X-Client-Id': 'YOUR_CLIENT_ID'
-            },
+            headers: defaultHeaders,
             body: endpoint.samplePayload ? JSON.stringify(endpoint.samplePayload, null, 2) : ''
         });
     };
@@ -82,27 +119,52 @@ function App() {
     const sendRequest = async () => {
         if (!selectedEndpoint) return;
 
+        console.log('=== SENDING REQUEST ===');
+        console.log('Selected endpoint:', selectedEndpoint);
+        console.log('Request data:', requestData);
+
         setLoading(true);
         setResponse(null);
 
         try {
+            // Build headers - exclude credentials that come from environment
+            const headersToSend = { ...requestData.headers };
+
+            // Remove credentials that will be injected by server
+            if (envCredentials.clientId) {
+                delete headersToSend['X-Client-Id'];
+                console.log('X-Client-Id will be provided by server environment');
+            }
+
+            if (envCredentials.apiKey) {
+                delete headersToSend['X-Api-Key'];
+                console.log('X-Api-Key will be provided by server environment');
+            }
+
             const payload = {
                 method: selectedEndpoint.method,
                 url: requestData.url,
-                headers: requestData.headers
+                headers: headersToSend
             };
 
             if (requestData.body && selectedEndpoint.method !== 'GET') {
                 try {
                     payload.body = JSON.parse(requestData.body);
                 } catch (e) {
+                    console.error('JSON parse error:', e);
                     throw new Error('Invalid JSON in request body');
                 }
             }
 
+            console.log('Sending to /api/proxy with payload:', payload);
             const res = await axios.post('/api/proxy', payload);
+            console.log('Received response from proxy:', res);
             setResponse(res.data);
         } catch (error) {
+            console.error('=== REQUEST ERROR ===');
+            console.error('Error:', error);
+            console.error('Error response:', error.response);
+
             setResponse({
                 status: error.response?.status || 500,
                 statusText: error.response?.statusText || 'Error',
@@ -324,6 +386,29 @@ function App() {
                                         {/* Headers Tab */}
                                         {activeTab === 'headers' && (
                                             <div>
+                                                {/* Info banner if credentials come from environment */}
+                                                {(envCredentials.clientId || envCredentials.apiKey) && (
+                                                    <div style={{
+                                                        backgroundColor: '#f0f9ff',
+                                                        border: '1px solid #bae6fd',
+                                                        borderRadius: '6px',
+                                                        padding: '12px',
+                                                        marginBottom: '16px',
+                                                        fontSize: '14px',
+                                                        color: '#0369a1'
+                                                    }}>
+                                                        <strong>ℹ️ Credentials from Environment</strong>
+                                                        <div style={{ marginTop: '6px', fontSize: '13px' }}>
+                                                            {envCredentials.clientId && '• X-Client-Id: Using secure value from server environment'}
+                                                            {envCredentials.clientId && <br />}
+                                                            {envCredentials.apiKey && '• X-Api-Key: Using secure value from server environment'}
+                                                            <div style={{ marginTop: '6px', fontStyle: 'italic' }}>
+                                                                These credentials are automatically injected by the server and never exposed to the client.
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {Object.entries(requestData.headers).map(([key, value]) => (
                                                     <div key={key} className="form-group">
                                                         <label className="form-label">{key}</label>

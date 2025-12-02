@@ -68,6 +68,11 @@ app.get('/api/env-status', (req, res) => {
             clientSecret: ENV_CONFIG.CLIENT_SECRET ? 'Set (Hidden)' : 'Not Set',
             apiKey: ENV_CONFIG.API_KEY ? 'Set (Hidden)' : 'Not Set'
         },
+        // For client use: indicates which credentials are available
+        available: {
+            clientId: !!ENV_CONFIG.CLIENT_ID,
+            apiKey: !!ENV_CONFIG.API_KEY
+        },
         note: 'If credentials are "Not Set", they must be added in Render environment variables'
     });
 });
@@ -257,74 +262,54 @@ app.post('/api/proxy', async (req, res) => {
         }
 
         console.log('Proxying request:', { method, url });
-        console.log('Client provided headers:', headers);
 
-        // Merge headers: start with defaults, add client headers
+        // Start with base headers
         const mergedHeaders = {
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            ...headers
+            'Accept': 'application/json'
         };
 
-        // Replace placeholder values with actual env vars
-        const PLACEHOLDER_PATTERNS = ['YOUR_', 'your_', 'YOUR-', 'your-'];
+        // Add Authorization from client (this needs to be real Bearer token)
+        if (headers?.['Authorization']) {
+            mergedHeaders['Authorization'] = headers['Authorization'];
 
-        // Check and replace X-Client-Id
-        if (mergedHeaders['X-Client-Id']) {
-            const clientIdValue = mergedHeaders['X-Client-Id'];
-            const isPlaceholder = PLACEHOLDER_PATTERNS.some(pattern => clientIdValue.includes(pattern));
-
-            if (isPlaceholder || !clientIdValue || clientIdValue.trim() === '') {
-                if (ENV_CONFIG.CLIENT_ID) {
-                    console.log('Replacing placeholder X-Client-Id with environment variable');
-                    mergedHeaders['X-Client-Id'] = ENV_CONFIG.CLIENT_ID;
-                } else {
-                    console.warn('X-Client-Id is placeholder but no env var available');
-                }
-            }
-        } else if (ENV_CONFIG.CLIENT_ID) {
-            console.log('Adding X-Client-Id from environment variable');
-            mergedHeaders['X-Client-Id'] = ENV_CONFIG.CLIENT_ID;
-        }
-
-        // Check and replace X-Api-Key
-        if (mergedHeaders['X-Api-Key']) {
-            const apiKeyValue = mergedHeaders['X-Api-Key'];
-            const isPlaceholder = PLACEHOLDER_PATTERNS.some(pattern => apiKeyValue.includes(pattern));
-
-            if (isPlaceholder || !apiKeyValue || apiKeyValue.trim() === '') {
-                if (ENV_CONFIG.API_KEY) {
-                    console.log('Replacing placeholder X-Api-Key with environment variable');
-                    mergedHeaders['X-Api-Key'] = ENV_CONFIG.API_KEY;
-                } else {
-                    console.warn('X-Api-Key is placeholder but no env var available');
-                }
-            }
-        } else if (ENV_CONFIG.API_KEY) {
-            console.log('Adding X-Api-Key from environment variable');
-            mergedHeaders['X-Api-Key'] = ENV_CONFIG.API_KEY;
-        }
-
-        // Check Authorization header for placeholder
-        if (mergedHeaders['Authorization']) {
-            const authValue = mergedHeaders['Authorization'];
-            const isPlaceholder = PLACEHOLDER_PATTERNS.some(pattern => authValue.includes(pattern));
-
-            if (isPlaceholder) {
+            // Warn if it's still a placeholder
+            if (headers['Authorization'].includes('YOUR')) {
                 console.warn('⚠️  Authorization header contains placeholder text!');
-                console.warn('   Please update the Authorization header with a real Bearer token');
-                console.warn('   Example: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6...');
+                console.warn('   Please obtain a real Bearer token via OAuth');
             }
         }
 
-        // Log what credentials are being used (without exposing values)
+        // ALWAYS use environment variables for Client ID and API Key if available
+        // Ignore what the client sends for these
+        if (ENV_CONFIG.CLIENT_ID) {
+            console.log('Using X-Client-Id from environment variables');
+            mergedHeaders['X-Client-Id'] = ENV_CONFIG.CLIENT_ID;
+        } else {
+            console.warn('⚠️  JPMC_CLIENT_ID not set in environment variables!');
+            // Fallback to client-provided value
+            if (headers?.['X-Client-Id']) {
+                mergedHeaders['X-Client-Id'] = headers['X-Client-Id'];
+            }
+        }
+
+        if (ENV_CONFIG.API_KEY) {
+            console.log('Using X-Api-Key from environment variables');
+            mergedHeaders['X-Api-Key'] = ENV_CONFIG.API_KEY;
+        } else {
+            console.warn('⚠️  JPMC_API_KEY not set in environment variables!');
+            // Fallback to client-provided value
+            if (headers?.['X-Api-Key']) {
+                mergedHeaders['X-Api-Key'] = headers['X-Api-Key'];
+            }
+        }
+
+        // Log final status (without exposing values)
         console.log('Final headers check:');
         console.log('  Authorization:', mergedHeaders['Authorization'] ?
             (mergedHeaders['Authorization'].includes('YOUR') ? '⚠️  PLACEHOLDER' : '✓ Present') : '✗ Missing');
-        console.log('  X-Client-Id:', mergedHeaders['X-Client-Id'] ?
-            (mergedHeaders['X-Client-Id'].includes('YOUR') ? '⚠️  PLACEHOLDER' : '✓ Present') : '✗ Missing');
-        console.log('  X-Api-Key:', mergedHeaders['X-Api-Key'] ?
-            (mergedHeaders['X-Api-Key'].includes('YOUR') ? '⚠️  PLACEHOLDER' : '✓ Present') : '✗ Missing');
+        console.log('  X-Client-Id:', mergedHeaders['X-Client-Id'] ? '✓ Present' : '✗ Missing');
+        console.log('  X-Api-Key:', mergedHeaders['X-Api-Key'] ? '✓ Present' : '✗ Missing');
 
         const config = {
             method,
