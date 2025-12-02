@@ -6,6 +6,8 @@ function App() {
     const [apis, setApis] = useState([]);
     const [selectedEndpoint, setSelectedEndpoint] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState('body');
     const [requestData, setRequestData] = useState({
         url: '',
@@ -18,9 +20,16 @@ function App() {
     const [response, setResponse] = useState(null);
 
     useEffect(() => {
+        console.log('React app mounted!');
+        console.log('Fetching API configuration from /api/config...');
+
         const fetchConfig = async () => {
+            setInitialLoading(true);
+            setError(null);
+
             try {
                 const res = await axios.get('/api/config');
+                console.log('API config loaded successfully:', res.data);
                 setApis(res.data.apis);
 
                 // Select first endpoint by default
@@ -42,8 +51,12 @@ function App() {
                         body: firstEndpoint.samplePayload ? JSON.stringify(firstEndpoint.samplePayload, null, 2) : ''
                     });
                 }
+                setInitialLoading(false);
             } catch (error) {
                 console.error('Error fetching config:', error);
+                const errorMessage = error.response?.data?.message || error.message || 'Failed to load API configuration';
+                setError(errorMessage);
+                setInitialLoading(false);
             }
         };
 
@@ -125,6 +138,79 @@ function App() {
         }
     };
 
+    // Show loading state
+    if (initialLoading) {
+        return (
+            <div className="app">
+                <div className="loading-container" style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    height: '100vh',
+                    flexDirection: 'column',
+                    gap: '20px'
+                }}>
+                    <div className="spinner" style={{
+                        width: '50px',
+                        height: '50px',
+                        border: '4px solid #f3f4f6',
+                        borderTop: '4px solid #3b82f6',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                    }}></div>
+                    <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading API Configuration...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Show error state
+    if (error) {
+        return (
+            <div className="app">
+                <div className="error-container" style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    height: '100vh',
+                    flexDirection: 'column',
+                    gap: '20px',
+                    padding: '40px'
+                }}>
+                    <div style={{
+                        backgroundColor: '#fee2e2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '8px',
+                        padding: '20px',
+                        maxWidth: '600px',
+                        width: '100%'
+                    }}>
+                        <h2 style={{ color: '#991b1b', marginBottom: '10px' }}>Error Loading Application</h2>
+                        <p style={{ color: '#7f1d1d', marginBottom: '15px' }}>{error}</p>
+                        <button
+                            onClick={() => window.location.reload()}
+                            style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#3b82f6',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                fontWeight: '600'
+                            }}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                    <p style={{ color: '#6b7280', fontSize: '14px' }}>
+                        Check browser console (F12) for more details
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="app">
             {/* Sidebar */}
@@ -143,9 +229,9 @@ function App() {
                                 className={`endpoint-item ${selectedEndpoint?.id === endpoint.id ? 'active' : ''}`}
                                 onClick={() => selectEndpoint(endpoint, api)}
                             >
-                <span className={`endpoint-method ${endpoint.method.toLowerCase()}`}>
-                  {endpoint.method}
-                </span>
+                                <span className={`endpoint-method ${endpoint.method.toLowerCase()}`}>
+                                    {endpoint.method}
+                                </span>
                                 <span className="endpoint-name">{endpoint.name}</span>
                             </div>
                         ))}
@@ -170,9 +256,9 @@ function App() {
                                     <div className="info-row">
                                         <div className="info-label">Method</div>
                                         <div className="info-value">
-                      <span className={`endpoint-method ${selectedEndpoint.method.toLowerCase()}`}>
-                        {selectedEndpoint.method}
-                      </span>
+                                            <span className={`endpoint-method ${selectedEndpoint.method.toLowerCase()}`}>
+                                                {selectedEndpoint.method}
+                                            </span>
                                         </div>
                                     </div>
                                     <div className="info-row">
@@ -226,11 +312,11 @@ function App() {
                                             <div className="form-group">
                                                 <label className="form-label">Request Body (JSON)</label>
                                                 <div className="code-editor">
-                          <textarea
-                              value={requestData.body}
-                              onChange={(e) => setRequestData(prev => ({ ...prev, body: e.target.value }))}
-                              placeholder="Enter JSON payload..."
-                          />
+                                                    <textarea
+                                                        value={requestData.body}
+                                                        onChange={(e) => setRequestData(prev => ({ ...prev, body: e.target.value }))}
+                                                        placeholder="Enter JSON payload..."
+                                                    />
                                                 </div>
                                             </div>
                                         )}
@@ -287,9 +373,9 @@ function App() {
                                     <div className="response-viewer">
                                         <div className="response-header">
                                             <div className="response-status">
-                        <span className={`status-badge ${response.status < 400 ? 'success' : 'error'}`}>
-                          {response.status} {response.statusText}
-                        </span>
+                                                <span className={`status-badge ${response.status < 400 ? 'success' : 'error'}`}>
+                                                    {response.status} {response.statusText}
+                                                </span>
                                             </div>
                                         </div>
                                         <div className="response-body">
