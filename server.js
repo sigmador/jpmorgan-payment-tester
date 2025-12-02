@@ -19,6 +19,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request logging middleware
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+});
+
 // JPMorgan API Configuration
 const JPMC_CONFIG = {
     sandbox: {
@@ -28,15 +34,17 @@ const JPMC_CONFIG = {
     }
 };
 
-// API Routes
+// API Routes - MUST BE BEFORE STATIC FILE SERVING
 
 // Health check
 app.get('/api/health', (req, res) => {
+    console.log('Health check called');
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Get API configuration
 app.get('/api/config', (req, res) => {
+    console.log('Config endpoint called');
     res.json({
         apis: [
             {
@@ -179,10 +187,23 @@ app.get('/api/config', (req, res) => {
 
 // Proxy endpoint for making API calls
 app.post('/api/proxy', async (req, res) => {
+    console.log('=== PROXY ENDPOINT CALLED ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+
     try {
         const { method, url, headers, body } = req.body;
 
+        if (!method || !url) {
+            console.error('Missing required fields:', { method, url });
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Missing required fields: method and url'
+            });
+        }
+
         console.log('Proxying request:', { method, url });
+        console.log('Request headers:', headers);
+        console.log('Request body:', body);
 
         const config = {
             method,
@@ -199,7 +220,9 @@ app.post('/api/proxy', async (req, res) => {
             config.data = body;
         }
 
+        console.log('Sending request to:', url);
         const response = await axios(config);
+        console.log('Received response:', response.status, response.statusText);
 
         res.json({
             status: response.status,
@@ -208,7 +231,10 @@ app.post('/api/proxy', async (req, res) => {
             data: response.data
         });
     } catch (error) {
-        console.error('Proxy error:', error);
+        console.error('=== PROXY ERROR ===');
+        console.error('Error:', error.message);
+        console.error('Stack:', error.stack);
+
         res.status(500).json({
             error: 'Proxy request failed',
             message: error.message,
@@ -232,7 +258,7 @@ if (process.env.NODE_ENV === 'production') {
         // Serve static files (CSS, JS, images, etc.)
         app.use(express.static(buildPath));
 
-        // Handle React routing - return index.html for all non-API routes
+        // Handle React routing - return index.html for GET requests to non-API routes
         app.get('*', (req, res) => {
             // Only serve index.html for non-API routes
             if (!req.path.startsWith('/api')) {
@@ -240,8 +266,24 @@ if (process.env.NODE_ENV === 'production') {
                 res.sendFile(path.join(buildPath, 'index.html'));
             } else {
                 // This shouldn't happen as API routes are defined above
-                res.status(404).json({ error: 'API route not found' });
+                console.error('GET request to undefined API route:', req.path);
+                res.status(404).json({ error: 'API route not found', path: req.path });
             }
+        });
+
+        // Catch-all for other HTTP methods to API routes (POST, PUT, DELETE, etc.)
+        app.all('/api/*', (req, res) => {
+            console.error('Request to undefined API route:', req.method, req.path);
+            res.status(404).json({
+                error: 'API route not found',
+                method: req.method,
+                path: req.path,
+                availableRoutes: [
+                    'GET /api/health',
+                    'GET /api/config',
+                    'POST /api/proxy'
+                ]
+            });
         });
     } else {
         console.error('Build directory does not exist!');
@@ -279,7 +321,14 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.listen(PORT, '0.0.0.0', () => {
+    console.log('='.repeat(50));
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`Access your app at: http://localhost:${PORT}`);
+    console.log('='.repeat(50));
+    console.log('Available API endpoints:');
+    console.log('  GET  /api/health');
+    console.log('  GET  /api/config');
+    console.log('  POST /api/proxy');
+    console.log('='.repeat(50));
 });
