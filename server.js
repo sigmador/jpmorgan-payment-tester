@@ -18,8 +18,7 @@ const PORT = process.env.PORT || 3001;
 const ENV_CONFIG = {
     CLIENT_ID: process.env.JPMC_CLIENT_ID,
     CLIENT_SECRET: process.env.JPMC_CLIENT_SECRET,
-    API_KEY: process.env.JPMC_API_KEY,
-    BEARER_TOKEN: process.env.JPMC_BEARER_TOKEN // Optional: for Authorization header
+    API_KEY: process.env.JPMC_API_KEY // This is the JWT Bearer token
 };
 
 // Log environment variable status
@@ -27,8 +26,7 @@ console.log('='.repeat(50));
 console.log('Environment Variables Check:');
 console.log(`JPMC_CLIENT_ID: ${ENV_CONFIG.CLIENT_ID ? '✓ Set' : '✗ Not Set'}`);
 console.log(`JPMC_CLIENT_SECRET: ${ENV_CONFIG.CLIENT_SECRET ? '✓ Set' : '✗ Not Set'}`);
-console.log(`JPMC_API_KEY: ${ENV_CONFIG.API_KEY ? '✓ Set' : '✗ Not Set'}`);
-console.log(`JPMC_BEARER_TOKEN: ${ENV_CONFIG.BEARER_TOKEN ? '✓ Set' : '✗ Not Set'}`);
+console.log(`JPMC_API_KEY (JWT Bearer Token): ${ENV_CONFIG.API_KEY ? '✓ Set' : '✗ Not Set'}`);
 console.log('='.repeat(50));
 
 // Middleware
@@ -68,16 +66,14 @@ app.get('/api/env-status', (req, res) => {
         credentials: {
             clientId: ENV_CONFIG.CLIENT_ID ? 'Set (Hidden)' : 'Not Set',
             clientSecret: ENV_CONFIG.CLIENT_SECRET ? 'Set (Hidden)' : 'Not Set',
-            apiKey: ENV_CONFIG.API_KEY ? 'Set (Hidden)' : 'Not Set',
-            bearerToken: ENV_CONFIG.BEARER_TOKEN ? 'Set (Hidden)' : 'Not Set'
+            apiKey: ENV_CONFIG.API_KEY ? 'Set (JWT Bearer Token - Hidden)' : 'Not Set'
         },
         // For client use: indicates which credentials are available
         available: {
             clientId: !!ENV_CONFIG.CLIENT_ID,
-            apiKey: !!ENV_CONFIG.API_KEY,
-            bearerToken: !!ENV_CONFIG.BEARER_TOKEN
+            apiKey: !!ENV_CONFIG.API_KEY // Used as Bearer token
         },
-        note: 'If credentials are "Not Set", they must be added in Render environment variables'
+        note: 'JPMC_API_KEY contains the JWT Bearer token for Authorization header'
     });
 });
 
@@ -274,12 +270,8 @@ app.post('/api/proxy', async (req, res) => {
         };
 
         // Handle Authorization header
-        if (ENV_CONFIG.BEARER_TOKEN) {
-            // Use dedicated bearer token from environment variable
-            console.log('Using Authorization Bearer token from JPMC_BEARER_TOKEN environment variable');
-            mergedHeaders['Authorization'] = `Bearer ${ENV_CONFIG.BEARER_TOKEN}`;
-        } else if (ENV_CONFIG.API_KEY) {
-            // Use JPMC_API_KEY as Bearer token
+        // JPMC_API_KEY contains the full JWT Bearer token
+        if (ENV_CONFIG.API_KEY) {
             console.log('Using Authorization Bearer token from JPMC_API_KEY environment variable');
             mergedHeaders['Authorization'] = `Bearer ${ENV_CONFIG.API_KEY}`;
         } else if (headers?.['Authorization']) {
@@ -289,34 +281,21 @@ app.post('/api/proxy', async (req, res) => {
             // Warn if it's still a placeholder
             if (headers['Authorization'].includes('YOUR')) {
                 console.warn('⚠️  Authorization header contains placeholder text!');
-                console.warn('   Add JPMC_API_KEY or JPMC_BEARER_TOKEN to Render environment variables');
+                console.warn('   Add JPMC_API_KEY (JWT token) to Render environment variables');
             }
         } else {
             console.warn('⚠️  No Authorization header provided!');
         }
 
-        // ALWAYS use environment variables for Client ID if available
+        // Use CLIENT_ID for X-Client-Id header
         if (ENV_CONFIG.CLIENT_ID) {
-            console.log('Using X-Client-Id from environment variables');
+            console.log('Using X-Client-Id from JPMC_CLIENT_ID environment variable');
             mergedHeaders['X-Client-Id'] = ENV_CONFIG.CLIENT_ID;
         } else {
             console.warn('⚠️  JPMC_CLIENT_ID not set in environment variables!');
             // Fallback to client-provided value
             if (headers?.['X-Client-Id']) {
                 mergedHeaders['X-Client-Id'] = headers['X-Client-Id'];
-            }
-        }
-
-        // For X-Api-Key header, use JPMC_API_KEY if available
-        // (Note: This is separate from using it as Bearer token above)
-        if (ENV_CONFIG.API_KEY) {
-            console.log('Using X-Api-Key from environment variables');
-            mergedHeaders['X-Api-Key'] = ENV_CONFIG.API_KEY;
-        } else {
-            console.warn('⚠️  JPMC_API_KEY not set in environment variables!');
-            // Fallback to client-provided value
-            if (headers?.['X-Api-Key']) {
-                mergedHeaders['X-Api-Key'] = headers['X-Api-Key'];
             }
         }
 
@@ -467,16 +446,18 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('='.repeat(50));
     console.log('Environment Variable Status:');
     console.log(`  JPMC_CLIENT_ID: ${ENV_CONFIG.CLIENT_ID ? '✓ Set' : '✗ MISSING'}`);
-    console.log(`  JPMC_API_KEY: ${ENV_CONFIG.API_KEY ? '✓ Set' : '✗ MISSING'}`);
-    console.log(`  JPMC_BEARER_TOKEN: ${ENV_CONFIG.BEARER_TOKEN ? '✓ Set (optional)' : '✗ Not Set (will use JPMC_API_KEY)'}`);
+    console.log(`  JPMC_API_KEY (JWT): ${ENV_CONFIG.API_KEY ? '✓ Set' : '✗ MISSING'}`);
 
     if (!ENV_CONFIG.CLIENT_ID || !ENV_CONFIG.API_KEY) {
         console.log('\n⚠️  WARNING: Missing required credentials!');
         console.log('   Add them in Render Dashboard → Environment tab');
+        console.log('   JPMC_CLIENT_ID: Your client ID');
+        console.log('   JPMC_API_KEY: Your JWT Bearer token');
     } else {
         console.log('\n✓ All credentials loaded!');
-        console.log('  • JPMC_API_KEY will be used for both Authorization Bearer token and X-Api-Key header');
-        console.log('  • Set JPMC_BEARER_TOKEN if you need a separate Bearer token');
+        console.log('  Headers that will be sent:');
+        console.log('    Authorization: Bearer <JPMC_API_KEY>');
+        console.log('    X-Client-Id: <JPMC_CLIENT_ID>');
     }
     console.log('='.repeat(50));
 });

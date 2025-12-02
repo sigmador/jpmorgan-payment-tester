@@ -60,18 +60,15 @@ function App() {
                         'Content-Type': 'application/json'
                     };
 
-                    // Only show Authorization if NOT available in environment (via API key or bearer token)
-                    if (!envCredentials.apiKey && !envCredentials.bearerToken) {
+                    // Only show Authorization if NOT available in environment
+                    // JPMC_API_KEY contains the JWT Bearer token
+                    if (!envCredentials.apiKey) {
                         defaultHeaders['Authorization'] = 'Bearer YOUR_ACCESS_TOKEN';
                     }
 
                     // Only show credential fields if NOT available in environment
                     if (!envCredentials.clientId) {
                         defaultHeaders['X-Client-Id'] = 'YOUR_CLIENT_ID';
-                    }
-
-                    if (!envCredentials.apiKey) {
-                        defaultHeaders['X-Api-Key'] = 'YOUR_API_KEY';
                     }
 
                     setRequestData({
@@ -104,17 +101,14 @@ function App() {
         };
 
         // Only show Authorization if NOT available in environment
-        if (!envCredentials.apiKey && !envCredentials.bearerToken) {
+        // JPMC_API_KEY contains the JWT Bearer token
+        if (!envCredentials.apiKey) {
             defaultHeaders['Authorization'] = 'Bearer YOUR_ACCESS_TOKEN';
         }
 
         // Only show credential fields if NOT available in environment
         if (!envCredentials.clientId) {
             defaultHeaders['X-Client-Id'] = 'YOUR_CLIENT_ID';
-        }
-
-        if (!envCredentials.apiKey) {
-            defaultHeaders['X-Api-Key'] = 'YOUR_API_KEY';
         }
 
         setRequestData({
@@ -138,21 +132,16 @@ function App() {
             // Build headers - exclude credentials that come from environment
             const headersToSend = { ...requestData.headers };
 
-            // Remove Authorization if it will be injected by server (via API key or bearer token)
-            if (envCredentials.apiKey || envCredentials.bearerToken) {
+            // Remove Authorization if it will be injected by server (JPMC_API_KEY is the JWT)
+            if (envCredentials.apiKey) {
                 delete headersToSend['Authorization'];
-                console.log('Authorization will be provided by server environment');
+                console.log('Authorization will be provided by server environment (JWT from JPMC_API_KEY)');
             }
 
-            // Remove credentials that will be injected by server
+            // Remove X-Client-Id if it will be injected by server
             if (envCredentials.clientId) {
                 delete headersToSend['X-Client-Id'];
                 console.log('X-Client-Id will be provided by server environment');
-            }
-
-            if (envCredentials.apiKey) {
-                delete headersToSend['X-Api-Key'];
-                console.log('X-Api-Key will be provided by server environment');
             }
 
             const payload = {
@@ -401,7 +390,7 @@ function App() {
                                         {activeTab === 'headers' && (
                                             <div>
                                                 {/* Info banner if credentials come from environment */}
-                                                {(envCredentials.clientId || envCredentials.apiKey || envCredentials.bearerToken) && (
+                                                {(envCredentials.clientId || envCredentials.apiKey) && (
                                                     <div style={{
                                                         backgroundColor: '#f0f9ff',
                                                         border: '1px solid #bae6fd',
@@ -413,11 +402,9 @@ function App() {
                                                     }}>
                                                         <strong>ℹ️ Credentials from Environment</strong>
                                                         <div style={{ marginTop: '6px', fontSize: '13px' }}>
-                                                            {(envCredentials.apiKey || envCredentials.bearerToken) && '• Authorization: Using secure Bearer token from server environment'}
-                                                            {(envCredentials.apiKey || envCredentials.bearerToken) && <br />}
-                                                            {envCredentials.clientId && '• X-Client-Id: Using secure value from server environment'}
-                                                            {envCredentials.clientId && <br />}
-                                                            {envCredentials.apiKey && '• X-Api-Key: Using secure value from server environment'}
+                                                            {envCredentials.apiKey && '• Authorization: Using JWT Bearer token from JPMC_API_KEY'}
+                                                            {envCredentials.apiKey && <br />}
+                                                            {envCredentials.clientId && '• X-Client-Id: Using value from JPMC_CLIENT_ID'}
                                                             <div style={{ marginTop: '6px', fontStyle: 'italic' }}>
                                                                 These credentials are automatically injected by the server and never exposed to the client.
                                                             </div>
