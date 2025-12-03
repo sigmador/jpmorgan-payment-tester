@@ -162,6 +162,8 @@ function App() {
             console.log('Sending to /api/proxy with payload:', payload);
             const res = await axios.post('/api/proxy', payload);
             console.log('Received response from proxy:', res);
+            console.log('JPMorgan API Status:', res.data.status);
+            console.log('JPMorgan API Response Data:', res.data.data);
             setResponse(res.data);
         } catch (error) {
             console.error('=== REQUEST ERROR ===');
@@ -466,6 +468,36 @@ function App() {
                                                 </span>
                                             </div>
                                         </div>
+
+                                        {/* Show error hints if status indicates error */}
+                                        {response.status >= 400 && response.data && (
+                                            <div style={{
+                                                backgroundColor: '#fef2f2',
+                                                border: '1px solid #fecaca',
+                                                borderRadius: '6px',
+                                                padding: '12px',
+                                                margin: '12px 0',
+                                                fontSize: '14px'
+                                            }}>
+                                                <strong>⚠️ Error Detected</strong>
+                                                {response.data.error && (
+                                                    <div style={{ marginTop: '6px' }}>
+                                                        <strong>Error:</strong> {response.data.error}
+                                                    </div>
+                                                )}
+                                                {response.data.message && (
+                                                    <div style={{ marginTop: '6px' }}>
+                                                        <strong>Message:</strong> {response.data.message}
+                                                    </div>
+                                                )}
+                                                {response.data.path && (
+                                                    <div style={{ marginTop: '6px' }}>
+                                                        <strong>Path:</strong> {response.data.path}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         <div className="response-body">
                                             <div className="response-code">
                                                 <pre>{JSON.stringify(response.data, null, 2)}</pre>
